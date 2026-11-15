@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { login as loginRequest, me as meRequest } from '../services/auth'
-import { setActiveToken, setUnauthorizedHandler } from '../services/apiClient'
+import { ApiError, setActiveToken, setUnauthorizedHandler } from '../services/apiClient'
 import type { UserRead } from '../types/api'
 
 const STORAGE_KEY = 'sala-steam-token'
@@ -54,9 +54,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setActiveToken(result.access_token)
       setToken(result.access_token)
       setUser(await meRequest())
-    } catch {
-      setError('Usuario o contrasena incorrectos.')
-      throw new Error('login failed')
+    } catch (cause) {
+      // Un fetch que ni siquiera llega al servidor lanza TypeError, no ApiError: ese caso no es
+      // "contrasena mala", es "no hay backend al otro lado" (tunel apagado, URL sin configurar).
+      if (cause instanceof ApiError && cause.status === 401) {
+        setError('Usuario o contrasena incorrectos.')
+      } else if (cause instanceof ApiError) {
+        setError(`El servidor respondio con un error (${cause.status}): ${cause.message}`)
+      } else {
+        setError(
+          'No se pudo conectar con el backend de la sala. Verifica que el servidor del portatil y su tunel esten encendidos.',
+        )
+      }
+      throw new Error('login failed', { cause })
     }
   }, [])
 
